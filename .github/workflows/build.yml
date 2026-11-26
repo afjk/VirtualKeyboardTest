@@ -1,0 +1,81 @@
+name: Build Mozc for Android
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      BAZEL: bazelisk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install bazelisk
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSLf -o "$HOME/bin/bazelisk" \
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-linux-amd64
+          chmod +x "$HOME/bin/bazelisk"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch Mozc at the pinned commit
+        run: scripts/fetch-mozc.sh
+
+      - name: Restore NDK download cache
+        uses: actions/cache@v4
+        with:
+          path: mozc/src/third_party_cache
+          key: update-deps-${{ runner.os }}-${{ hashFiles('MOZC_COMMIT') }}
+
+      - name: Restore Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: bazel-disk-${{ runner.os }}-${{ hashFiles('MOZC_COMMIT') }}
+
+      - name: Download Android NDK
+        working-directory: mozc/src
+        # Only the NDK is needed; skip Qt, LLVM, MSYS2 and WiX (desktop builds).
+        run: python3 build_tools/update_deps.py --noqt --nollvm --nomsys2 --nowix
+
+      - name: Build libmozc.so (arm64-v8a)
+        working-directory: mozc/src
+        run: |
+          bazelisk build //android/jni:mozc.arm64 \
+            --config oss_android --config release_build \
+            --disk_cache="$HOME/.cache/bazel-disk"
+
+      - name: Build dictionary data and host smoke-test tool
+        working-directory: mozc/src
+        run: |
+          bazelisk build //data_manager/oss:mozc_dataset_for_oss //session:session_handler_main \
+            --disk_cache="$HOME/.cache/bazel-disk"
+
+      - name: Smoke test conversion on Linux (OSS dictionary)
+        working-directory: mozc/src
+        run: |
+          bazel-bin/session/session_handler_main --dictionary=oss --test \
+            --profile="$RUNNER_TEMP/mozc-profile" \
+            --input="$GITHUB_WORKSPACE/test/smoke_scenario.txt"
+
+      - name: Package and verify
+        run: scripts/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mozc-android-arm64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
