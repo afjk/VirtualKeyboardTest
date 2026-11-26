@@ -65,10 +65,24 @@ jobs:
 
       - name: Smoke test conversion on Linux (OSS dictionary)
         working-directory: mozc/src
+        # The tool dumps the whole candidate window after a failed expectation.
+        # Show only the failing lines here; the full output is uploaded as an artifact.
         run: |
+          set +e
           bazel-bin/session/session_handler_main --dictionary=oss --test \
             --profile="$RUNNER_TEMP/mozc-profile" \
-            --input="$GITHUB_WORKSPACE/test/smoke_scenario.txt"
+            --input="$GITHUB_WORKSPACE/test/smoke_scenario.txt" > "$RUNNER_TEMP/smoke.log" 2>&1
+          status=$?
+          grep -nE -A2 '^#[0-9]+: |^ERROR|^\[ (PASSED|FAILED) \]' "$RUNNER_TEMP/smoke.log" | cut -c1-300
+          exit $status
+
+      - name: Upload smoke-test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-log
+          path: ${{ runner.temp }}/smoke.log
+          if-no-files-found: ignore
 
       - name: Package and verify
         run: scripts/package.sh
