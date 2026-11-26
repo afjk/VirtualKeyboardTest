@@ -16,4 +16,7 @@ RESET_CONTEXT
 SEND_KEYS	kannjihenkann
 EXPECT_PREEDIT	かんじへんかん
 SEND_KEY	SPACE
-EXPECT_IN_ALL_CANDIDATE_WORDS	漢字変換
+# Mozc splits this into two segments (かんじ|へんかん); candidates list the focused first segment.
+EXPECT_IN_ALL_CANDIDATE_WORDS	漢字
+SEND_KEY	ENTER
+EXPECT_RESULT	漢字変換
