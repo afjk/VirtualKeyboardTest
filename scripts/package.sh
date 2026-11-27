@@ -14,6 +14,8 @@ src="$root/mozc/src"
 dist="$root/dist"
 bazel="${BAZEL:-bazelisk}"
 android_flags=(--config oss_android --config release_build)
+# Must match the flags of the Linux build step in .github/workflows/build.yml.
+host_flags=(--compilation_mode=opt)
 
 rm -rf "$dist"
 mkdir -p "$dist/arm64-v8a" "$dist/x86_64" "$dist/licenses" "$dist/symbols/arm64-v8a"
@@ -21,8 +23,8 @@ cd "$src"
 
 files() { "$bazel" cquery "$@" --output=files 2>/dev/null; }
 android_so="$(files //android/jni:libmozc_shim.arm64 "${android_flags[@]}" | grep '\.so$' | head -n1)"
-host_so="$(files //android/jni:libmozc_shim.so | grep '\.so$' | head -n1)"
-data="$(files //data_manager/oss:mozc_dataset_for_oss | grep '/mozc\.data$' | head -n1)"
+host_so="$(files //android/jni:libmozc_shim.so "${host_flags[@]}" | grep '\.so$' | head -n1)"
+data="$(files //data_manager/oss:mozc_dataset_for_oss "${host_flags[@]}" | grep '/mozc\.data$' | head -n1)"
 for f in "$android_so" "$host_so" "$data"; do
   [ -f "$f" ] || { echo "build output not found: '$f'" >&2; exit 1; }
 done
