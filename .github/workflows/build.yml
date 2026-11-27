@@ -78,6 +78,7 @@ jobs:
             //session:session_handler_main \
             //android/jni:libmozc_shim.so \
             //android/jni:mozc_shim_smoke \
+            --compilation_mode=opt \
             --disk_cache="$HOME/.cache/bazel-disk"
 
       - name: Smoke test conversion on Linux (OSS dictionary)

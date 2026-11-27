@@ -9,6 +9,7 @@ mozc_cc_library(
     srcs = ["mozc_shim.cc"],
     hdrs = ["mozc_shim.h"],
     deps = [
+        "//base:file_util",
         "//base:system_util",
         "//data_manager",
         "//engine",

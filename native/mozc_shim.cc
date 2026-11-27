@@ -11,6 +11,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "base/file_util.h"
 #include "base/system_util.h"
 #include "data_manager/data_manager.h"
 #include "engine/engine.h"
@@ -49,6 +50,13 @@ int mozc_shim_initialize(const char* profile_dir, const char* data_file_path) {
   if (state.handler) return 1;
   if (profile_dir == nullptr || data_file_path == nullptr) {
     state.last_error = "profile_dir and data_file_path are required";
+    return 0;
+  }
+  // Mozc stores learning data here and does not create the directory itself.
+  if (absl::Status s = mozc::FileUtil::CreateDirectory(profile_dir);
+      !s.ok() && !absl::IsAlreadyExists(s)) {
+    state.last_error = absl::StrCat("cannot create profile directory ",
+                                    profile_dir, ": ", s.ToString());
     return 0;
   }
   mozc::SystemUtil::SetUserProfileDirectory(profile_dir);
