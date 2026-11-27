@@ -1,0 +1,23 @@
+# Smoke test: romaji input, kana preedit and kanji conversion with the OSS dictionary.
+SET_CONFIG	preedit_method	ROMAN
+SWITCH_COMPOSITION_MODE	HIRAGANA
+SET_CONFIG	session_keymap	MSIME
+SEND_KEY	ON
+RESET_CONTEXT
+
+SEND_KEYS	nihongo
+EXPECT_PREEDIT	にほんご
+SEND_KEY	SPACE
+EXPECT_IN_ALL_CANDIDATE_WORDS	日本語
+SUBMIT_CANDIDATE_BY_VALUE	日本語
+EXPECT_RESULT	日本語
+
+RESET_CONTEXT
+SEND_KEYS	kannjihenkann
+EXPECT_PREEDIT	かんじへんかん
+SEND_KEY	SPACE
+# Mozc splits this into two segments (かんじ|へんかん); candidates list the focused first segment.
+EXPECT_IN_ALL_CANDIDATE_WORDS	漢字
+# Observed 2026-11-26 (OSS dictionary): the first choice for かんじへんかん is 感じ変換,
+# so the committed text is not asserted. Only that 漢字 is offered for the first segment.
+SEND_KEY	ENTER
