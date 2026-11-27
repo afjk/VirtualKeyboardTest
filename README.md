@@ -44,7 +44,8 @@ Mozc の `//session:session_handler` は `//android/jni` からしか参照で�
 - 両ライブラリが C API の 5 関数を公開していること
 - Unity 用 C# が UnityEngine のスタブに対してコンパイルできること（Unity でのビルドではない）
 
-Quest 実機での動作、Unity Editor での読み込み、IL2CPP ビルドは確認していません。
+Unity での IL2CPP ビルドと Android 実機での動作は、手元で XREAL AURA を使って確認しました（下記）。
+Quest 実機、Unity Editor での読み込みは確認していません。
 
 ### Quest 3 での確認手順
 
@@ -53,6 +54,35 @@ Quest 実機での動作、Unity Editor での読み込み、IL2CPP ビルドは
 3. 空のシーンに GameObject を置き、`MozcSmokeTest` を追加してビルド・実行する。
 4. `adb logcat -s Unity | grep MozcSmoke` で、データ展開・初期化時間、1 キーあたりの時間、
    変換時間、常駐メモリ増分、`[ PASSED ]` / `[ FAILED ]` を確認する。
+
+### XREAL AURA での確認結果（2026-11-27）
+
+Unity 6000.3.20f1、IL2CPP、ARM64、最小 API 29 の 2D アプリとしてビルドし、
+XREAL Android XR Puck（Android 14 / API 34）で `MozcSmokeTest` を実行しました。
+.meta、DllNotFoundException、`mozc.data` の展開、IL2CPP のマーシャリングに問題はなく、
+初回の起動から `[ PASSED ]` でした。
+
+| 項目 | 初回起動 | 2 回目 |
+|---|---|---|
+| データ展開（19 MB） | 49 ms | 33 ms（コピー済みのものを再利用） |
+| 初期化 | 15 ms | 15 ms |
+| RSS の増分 | +13.0 MB | +8.4 MB |
+| nihongo | 0.70 ms/キー、変換 0.40 ms | 0.76 ms/キー、変換 0.62 ms |
+| kannjihenkann | 0.92 ms/キー、変換 2.44 ms | 1.02 ms/キー、変換 4.11 ms |
+
+2 回目は学習により `かんじへんかん` の第一候補が `漢字変換` に変わります
+（テストは候補 id で `漢字` を選ぶため結果は同じ）。
+
+### 入力デモ（MozcKeyboardDemo）
+
+`Samples/MozcKeyboardDemo.cs` は、画面上のローマ字キーボードで実際に入力を試すためのサンプルです。
+空のシーンの GameObject に追加するだけで動きます（IMGUI のみ、追加パッケージ不要）。
+
+- キーをタップ、またはハードウェアキーボードで入力
+- 「変換 / 空白」で変換・次候補、候補をタップで選択、「確定」で確定
+- BS は左の 1 文字、「削除」は右の 1 文字を消す。← → で文節を移動
+- 日本語フォントは OS の Noto Sans CJK JP などを自動で使う
+- 画面左上に直前のキー 1 回の処理時間を表示
 
 Linux の Unity Editor でも `x86_64/libmozc_shim.so` で同じサンプルを再生できます
 （macOS 用ライブラリは未作成）。
