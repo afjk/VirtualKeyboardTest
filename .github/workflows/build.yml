@@ -12,6 +12,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  csharp-check:
+    # Type-checks unity/Assets against UnityEngine stubs (no Unity install).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: dotnet build ci/csharp-check/CSharpCheck.csproj -nologo
+
   android-arm64:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -30,8 +40,10 @@ jobs:
           chmod +x "$HOME/bin/bazelisk"
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
-      - name: Fetch Mozc at the pinned commit
-        run: scripts/fetch-mozc.sh
+      - name: Fetch Mozc at the pinned commit and add the C API shim
+        run: |
+          scripts/fetch-mozc.sh
+          scripts/add-shim.sh
 
       - name: Restore NDK download cache
         uses: actions/cache@v4
@@ -43,24 +55,29 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel-disk
-          key: bazel-disk-${{ runner.os }}-${{ hashFiles('MOZC_COMMIT') }}
+          key: bazel-disk-${{ runner.os }}-${{ hashFiles('MOZC_COMMIT', 'native/**') }}
+          restore-keys: bazel-disk-${{ runner.os }}-
 
       - name: Download Android NDK
         working-directory: mozc/src
         # Only the NDK is needed; skip Qt, LLVM, MSYS2 and WiX (desktop builds).
         run: python3 build_tools/update_deps.py --noqt --nollvm --nomsys2 --nowix
 
-      - name: Build libmozc.so (arm64-v8a)
+      - name: Build libmozc_shim.so (Android arm64-v8a)
         working-directory: mozc/src
         run: |
-          bazelisk build //android/jni:mozc.arm64 \
+          bazelisk build //android/jni:libmozc_shim.arm64 \
             --config oss_android --config release_build \
             --disk_cache="$HOME/.cache/bazel-disk"
 
-      - name: Build dictionary data and host smoke-test tool
+      - name: Build dictionary data, Linux shim and test tools
         working-directory: mozc/src
         run: |
-          bazelisk build //data_manager/oss:mozc_dataset_for_oss //session:session_handler_main \
+          bazelisk build \
+            //data_manager/oss:mozc_dataset_for_oss \
+            //session:session_handler_main \
+            //android/jni:libmozc_shim.so \
+            //android/jni:mozc_shim_smoke \
             --disk_cache="$HOME/.cache/bazel-disk"
 
       - name: Smoke test conversion on Linux (OSS dictionary)
@@ -76,20 +93,48 @@ jobs:
           grep -nE -A2 '^#[0-9]+: |^ERROR|^\[ (PASSED|FAILED) \]' "$RUNNER_TEMP/smoke.log" | cut -c1-300
           exit $status
 
+      - name: Smoke test the C API shim with mozc.data loaded from a file
+        working-directory: mozc/src
+        run: |
+          bazel-bin/android/jni/mozc_shim_smoke "$RUNNER_TEMP/shim-profile" \
+            bazel-bin/data_manager/oss/mozc.data 2>&1 | tee "$RUNNER_TEMP/shim-smoke.log" | cut -c1-300
+          exit ${PIPESTATUS[0]}
+
       - name: Upload smoke-test output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-test-log
-          path: ${{ runner.temp }}/smoke.log
+          path: |
+            ${{ runner.temp }}/smoke.log
+            ${{ runner.temp }}/shim-smoke.log
           if-no-files-found: ignore
 
       - name: Package and verify
         run: scripts/package.sh
 
+      - name: Assemble Unity assets
+        run: scripts/assemble-unity.sh
+
       - uses: actions/upload-artifact@v4
         with:
-          name: mozc-android-arm64
-          path: dist/
+          name: mozc-shim-libs
+          path: |
+            dist/
+            !dist/symbols/
+          if-no-files-found: error
+          retention-days: 90
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mozc-shim-symbols
+          path: dist/symbols/
+          if-no-files-found: error
+          retention-days: 90
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mozc-unity-assets
+          path: unity-dist/
           if-no-files-found: error
           retention-days: 90

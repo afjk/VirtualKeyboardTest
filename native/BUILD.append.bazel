@@ -1,0 +1,56 @@
+
+# ---------------------------------------------------------------------------
+# Appended by VirtualKeyboardTest/scripts/add-shim.sh (not part of Mozc).
+# Lives in //android/jni because //session:session_handler is visible only here.
+# ---------------------------------------------------------------------------
+
+mozc_cc_library(
+    name = "mozc_shim_lib",
+    srcs = ["mozc_shim.cc"],
+    hdrs = ["mozc_shim.h"],
+    deps = [
+        "//base:system_util",
+        "//data_manager",
+        "//engine",
+        "//protocol:commands_cc_proto",
+        "//session:session_handler",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_protobuf//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+# Shared library loaded by Unity (DllImport "mozc_shim").
+mozc_cc_binary(
+    name = "libmozc_shim.so",
+    linkopts = mozc_select(
+        android = [
+            "-llog",
+            # 16 KB page size support is required to target Android 15+.
+            "-Wl,-z,max-page-size=16384",
+        ],
+    ),
+    linkshared = 1,
+    deps = [":mozc_shim_lib"],
+)
+
+cross_build_binary(
+    name = "libmozc_shim.arm64",
+    cpu = "arm64-v8a",
+    platform = ":arm64-v8a",
+    target = ":libmozc_shim.so",
+)
+
+mozc_cc_binary(
+    name = "mozc_shim_smoke",
+    srcs = ["mozc_shim_smoke.cc"],
+    deps = [
+        ":mozc_shim_lib",
+        "//protocol:commands_cc_proto",
+        "@com_google_protobuf//:protobuf",
+    ],
+)

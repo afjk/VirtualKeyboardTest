@@ -2,56 +2,69 @@
 
 ## Mozc Android ビルド
 
-[Google Mozc](https://github.com/google/mozc) の公式 Android ターゲット
-（`//android/jni:mozc.arm64`）と OSS 辞書データ（`mozc.data`）を
-GitHub Actions でビルドし、成果物として配布するためのリポジトリです。
-Mozc のソースは `MOZC_COMMIT` で固定したコミットをビルド時に取得します。
-このリポジトリに Mozc のソースやバイナリは含みません。
+[Google Mozc](https://github.com/google/mozc) を、Unity から呼べる小さな C API
+（`native/mozc_shim.h`）付きで Android arm64 と Linux x64 向けにビルドし、
+GitHub Actions の成果物として配布します。Mozc のソースは `MOZC_COMMIT` で固定した
+コミットをビルド時に取得します。このリポジトリに Mozc のソースやバイナリは含みません。
 
-### 成果物（Actions の artifact `mozc-android-arm64`）
+### C API
 
-| ファイル | 内容 |
+コマンドと応答は `mozc.commands.Command` の protobuf JSON です（フィールド名は
+lowerCamelCase、enum は名前、64 bit 整数は文字列）。呼び出し側に protobuf ランタイムも、
+Mozc 公式 JNI が要求する固定の Java クラス名も不要です。
+
+```c
+int   mozc_shim_initialize(const char* profile_dir, const char* data_file_path);
+char* mozc_shim_eval(const char* command_json);   // mozc_shim_free で解放
+void  mozc_shim_free(char*);
+const char* mozc_shim_data_version(void);
+const char* mozc_shim_last_error(void);
+```
+
+Mozc の `//session:session_handler` は `//android/jni` からしか参照できないため、
+`scripts/add-shim.sh` が `native/` のファイルを Mozc の `src/android/jni/` にコピーして
+ビルド定義を追記します。辞書ファイルを読めないときは、公式 JNI のように辞書なしの
+エンジンへ切り替えず、初期化を失敗させます。
+
+### 成果物
+
+| artifact | 内容 |
 |---|---|
-| `arm64-v8a/libmozc.so` | Android arm64-v8a 用 Mozc 本体（JNI、16 KB ページ整列） |
-| `mozc.data` | OSS 辞書データ。`onPostLoad` に渡すデータファイル |
-| `licenses/` | Mozc・辞書・同梱ライブラリのライセンス表示 |
-| `verify.txt` | ELF 種別、依存ライブラリ、LOAD 整列、JNI 入口の確認結果 |
-| `BUILD_INFO.txt` / `SHA256SUMS` | Mozc コミット、Bazel・NDK 版、サイズ、ハッシュ |
+| `mozc-unity-assets` | Unity プロジェクトにそのままコピーする `Assets/`（C# ラッパー、確認用サンプル、ライブラリ、`StreamingAssets/mozc/mozc.data`、ライセンス） |
+| `mozc-shim-libs` | `arm64-v8a/libmozc_shim.so`、`x86_64/libmozc_shim.so`（どちらも strip 済み）、`mozc.data`、`licenses/`、`verify.txt`、`BUILD_INFO.txt`、`SHA256SUMS` |
+| `mozc-shim-symbols` | strip 前の Android ライブラリ（クラッシュ解析用） |
+| `smoke-test-log` | Linux でのスモークテスト出力 |
 
 ### ワークフローで確認していること
 
-- `libmozc.so` が aarch64 の ELF で、LOAD セグメントが 16 KB 整列であること
-- JNI 入口 `Java_com_google_android_apps_inputmethod_libs_mozc_session_MozcJni_initialize` が公開されていること
-- Linux 上で同じコミットの Mozc と OSS 辞書を使い、`test/smoke_scenario.txt`
-  （`nihongo` → `にほんご` → `日本語`、`kannjihenkann` → `漢字変換`）が通ること
+- Linux で `test/smoke_scenario.txt`（Mozc 公式のシナリオ形式）が通ること
+- Linux で C API から `mozc.data` をファイルとして読み込み、`nihongo` → `日本語` の確定、
+  `kannjihenkann` の候補一覧から `漢字` を選んで確定できること（Unity サンプルと同じ手順）
+- Android ライブラリが aarch64 で、LOAD セグメントが 16 KB 整列であること
+- 両ライブラリが C API の 5 関数を公開していること
+- Unity 用 C# が UnityEngine のスタブに対してコンパイルできること（Unity でのビルドではない）
 
-Android 実機での動作（`mozc.data` の読み込み、変換速度、メモリ）はこのワークフローでは確認していません。
+Quest 実機での動作、Unity Editor での読み込み、IL2CPP ビルドは確認していません。
 
-### JNI の呼び出し方（Mozc 側の仕様）
+### Quest 3 での確認手順
 
-`libmozc.so` は Java クラス
-`com.google.android.apps.inputmethod.libs.mozc.session.MozcJni` の static native
-メソッドとして次を登録します（`initialize()` を最初に呼ぶ）。
+1. Unity 2021.3 以降で空のプロジェクトを作り、Android（IL2CPP、ARM64）に切り替える。
+2. `mozc-unity-assets` を展開し、`Assets/` をプロジェクトに上書きコピーする。
+3. 空のシーンに GameObject を置き、`MozcSmokeTest` を追加してビルド・実行する。
+4. `adb logcat -s Unity | grep MozcSmoke` で、データ展開・初期化時間、1 キーあたりの時間、
+   変換時間、常駐メモリ増分、`[ PASSED ]` / `[ FAILED ]` を確認する。
 
-- `boolean onPostLoad(String userProfileDirectory, String dataFilePath)`
-- `byte[] evalCommand(byte[] command)` — `mozc.commands.Command` protobuf のシリアライズ
-- `String getDataVersion()`
+Linux の Unity Editor でも `x86_64/libmozc_shim.so` で同じサンプルを再生できます
+（macOS 用ライブラリは未作成）。
 
-### ローカルでのビルド
+### OSS 辞書について
 
-```sh
-scripts/fetch-mozc.sh
-cd mozc/src
-python3 build_tools/update_deps.py --noqt --nollvm --nomsys2 --nowix
-bazelisk build //android/jni:mozc.arm64 --config oss_android --config release_build
-bazelisk build //data_manager/oss:mozc_dataset_for_oss //session:session_handler_main
-cd ../..
-scripts/package.sh
-```
+`かんじへんかん` の第一候補は `感じ変換` でした（2026-11-26 確認）。
+候補一覧からの選択は必須の操作になります。
 
 ### ライセンス
 
-このリポジトリのスクリプトは BSD 3-Clause License です（`LICENSE`）。
-ビルドした成果物には Mozc（BSD 3-Clause）、辞書データ（IPAdic 由来の NAIST 条項ほか、
-`licenses/` 参照）、Abseil（Apache-2.0）、Protocol Buffers（BSD 3-Clause）などが含まれます。
-配布時は `licenses/` の表示を同梱してください。
+このリポジトリのスクリプトとコードは BSD 3-Clause License です（`LICENSE`）。
+成果物には Mozc（BSD 3-Clause）、辞書データ（IPAdic 由来の NAIST 条項ほか）、
+用例辞書（BSD 2-Clause）、Abseil（Apache-2.0）、Protocol Buffers（BSD 3-Clause）、
+zlib などが含まれます。配布時は `licenses/` の表示を同梱してください。
