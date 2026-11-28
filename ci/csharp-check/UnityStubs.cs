@@ -6,7 +6,8 @@ using System.Collections;
 namespace UnityEngine
 {
     public class Object { }
-    public class Component : Object { }
+    public class Component : Object { public GameObject gameObject => null; }
+    public class GameObject : Object { public T AddComponent<T>() where T : Component, new() => new T(); }
     public class Behaviour : Component { }
     public class MonoBehaviour : Behaviour { }
     public class TextMesh : Component { public string text; }
@@ -35,12 +36,21 @@ namespace UnityEngine
     // IMGUI subset used by Samples/MozcKeyboardDemo.cs.
     public struct Vector2 { public float x, y; }
     public struct Vector3 { public Vector3(float x, float y, float z) { } }
-    public struct Rect { public Rect(float x, float y, float width, float height) { } }
+    public struct Rect
+    {
+        public float x, y, width, height;
+        public Rect(float x, float y, float width, float height) { this.x = x; this.y = y; this.width = width; this.height = height; }
+    }
+    public struct Quaternion { public static Quaternion identity => default; }
     public struct Color
     {
         public Color(float r, float g, float b) { }
     }
-    public struct Matrix4x4 { public static Matrix4x4 Scale(Vector3 v) => default; }
+    public struct Matrix4x4
+    {
+        public static Matrix4x4 Scale(Vector3 v) => default;
+        public static Matrix4x4 TRS(Vector3 pos, Quaternion q, Vector3 s) => default;
+    }
     public static class Mathf
     {
         public static float Max(float a, float b) => Math.Max(a, b);
