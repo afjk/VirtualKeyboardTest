@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs JapaneseKeyboardBuffer against a fake converter (no Unity, no Mozc). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../csharp-check/UnityStubs.cs" />
+    <Compile Include="../../unity/Assets/MozcShim/Runtime/IKanaKanjiConverter.cs" />
+    <Compile Include="../../unity/Assets/MozcShim/Runtime/JapaneseKeyboardBuffer.cs" />
+    <Compile Include="../../unity/Assets/MozcShim/Runtime/MozcSession.cs" />
+    <Compile Include="../../unity/Assets/MozcShim/Runtime/MozcNative.cs" />
+  </ItemGroup>
+</Project>

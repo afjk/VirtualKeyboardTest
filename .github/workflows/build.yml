@@ -21,9 +21,13 @@ jobs:
         with:
           persist-credentials: false
       - run: dotnet build ci/csharp-check/CSharpCheck.csproj -nologo
+      - name: Keyboard logic tests (fake converter)
+        run: dotnet run --project ci/keyboard-tests/KeyboardTests.csproj -nologo
 
   android-arm64:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # Only used to attach files to a release on v* tags.
     timeout-minutes: 150
     env:
       BAZEL: bazelisk
@@ -139,3 +143,18 @@ jobs:
           path: unity-dist/
           if-no-files-found: error
           retention-days: 90
+
+      # Actions artifacts expire after 90 days; a tagged release keeps the files.
+      - name: Attach to GitHub release (v* tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          (cd unity-dist && zip -qr "../mozc-unity-assets-$tag.zip" Assets)
+          (cd dist && zip -qr "../mozc-shim-libs-$tag.zip" . -x 'symbols/*')
+          (cd dist && zip -qr "../mozc-shim-symbols-$tag.zip" symbols)
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --notes "Built from ${GITHUB_SHA} (Mozc $(cat MOZC_COMMIT)). See README for usage and licences."
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber \
+            "mozc-unity-assets-$tag.zip" "mozc-shim-libs-$tag.zip" "mozc-shim-symbols-$tag.zip"

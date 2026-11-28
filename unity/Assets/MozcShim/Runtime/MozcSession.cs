@@ -9,7 +9,7 @@ namespace MozcShim
     /// the preedit, candidates and committed text from the returned state.
     /// Not thread-safe; call from one thread (the native side serializes calls).
     /// </summary>
-    public sealed class MozcSession : IDisposable
+    public sealed class MozcSession : IKanaKanjiConverter, IDisposable
     {
         private readonly string id;
 
@@ -120,6 +120,18 @@ namespace MozcShim
         public (int Id, string Value)[] Candidates { get; }
         public int FocusedCandidateIndex { get; }
         public bool Consumed { get; }
+
+        /// <summary>Builds a state directly, e.g. for tests or another converter.</summary>
+        public MozcState(string committed, string[] segments,
+            (int Id, string Value)[] candidates = null, int focusedCandidateIndex = -1)
+        {
+            Committed = committed ?? "";
+            Segments = segments ?? Array.Empty<string>();
+            Preedit = string.Concat(Segments);
+            Candidates = candidates ?? Array.Empty<(int, string)>();
+            FocusedCandidateIndex = focusedCandidateIndex;
+            Consumed = true;
+        }
 
         internal MozcState(MozcSession.OutputJson output = null)
         {
